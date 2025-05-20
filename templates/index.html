@@ -1,0 +1,158 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cancer Detection</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .hidden { display: none; }
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.2);
+      border-top: 4px solid #3b82f6;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      animation: spin 1s linear infinite;
+      margin: auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg);}
+      100% { transform: rotate(360deg);}
+    }
+  </style>
+</head>
+<body class="bg-[#0f0f0f] text-[#e6e6e6] min-h-screen flex flex-col items-center p-6 font-sans">
+  <h1 class="text-4xl font-extrabold mb-8">Cancer Detection</h1>
+
+  <form id="uploadForm" method="POST" enctype="multipart/form-data" class="w-full max-w-3xl">
+    <div id="uploadContainer" class="border-2 border-dashed border-[#5a7fcf] rounded-lg p-12 flex flex-col items-center justify-center cursor-pointer hover:border-[#3b82f6] transition-colors select-none"
+      ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+      <input type="file" name="image" id="fileInput" accept="image/*" class="hidden" />
+      <p class="text-[#5a7fcf] text-lg mb-4">Drag & Drop image here or</p>
+      <button type="button" id="browseBtn" class="bg-[#5a7fcf] hover:bg-[#3b82f6] text-white font-semibold py-2 px-6 rounded">Upload Image</button>
+    </div>
+
+    <div id="imagePreview" class="hidden flex flex-col items-center space-y-2">
+      <h2 class="text-2xl font-semibold mb-4">Input Image</h2>
+      <img id="previewImg" src="" alt="Uploaded input image" class="max-w-full max-h-96 rounded-lg border border-[#5a7fcf]" />
+      <p id="fileName" class="text-[#999]"></p>
+      <button type="button" id="deleteBtn" class="text-red-500 hover:underline">🗑️</button>
+      <button type="submit" id="detectBtn" class="mt-6 bg-[#d87e0a] hover:bg-[#c06f08] text-white font-semibold py-3 px-10 rounded text-xl">Detect and Mask</button>
+    </div>
+  </form>
+
+  <div id="spinner" class="hidden mt-8">
+    <div class="spinner"></div>
+  </div>
+
+  <div id="outputSection" class="hidden w-full max-w-5xl mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div>
+      <h3 class="text-xl font-semibold mb-4">Detectron Output</h3>
+      <img id="detectronOutput" src="" alt="Detectron output image" class="w-full rounded-lg border border-[#5a7fcf]" />
+    </div>
+    <div>
+      <h3 class="text-xl font-semibold mb-4">SAM Output</h3>
+      <img id="samOutput" src="" alt="SAM output image" class="w-full rounded-lg border border-[#5a7fcf]" />
+    </div>
+  </div>
+
+<script>
+  const uploadContainer = document.getElementById('uploadContainer');
+  const fileInput = document.getElementById('fileInput');
+  const browseBtn = document.getElementById('browseBtn');
+  const imagePreview = document.getElementById('imagePreview');
+  const previewImg = document.getElementById('previewImg');
+  const fileNameElem = document.getElementById('fileName');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const detectBtn = document.getElementById('detectBtn');
+  const spinner = document.getElementById('spinner');
+  const outputSection = document.getElementById('outputSection');
+  const detectronOutput = document.getElementById('detectronOutput');
+  const samOutput = document.getElementById('samOutput');
+  const uploadForm = document.getElementById('uploadForm');
+
+  browseBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+      showPreview(fileInput.files[0]);
+    }
+  });
+
+  function handleDrop(event) {
+    event.preventDefault();
+    if (event.dataTransfer.files.length > 0) {
+      fileInput.files = event.dataTransfer.files;
+      showPreview(event.dataTransfer.files[0]);
+    }
+  }
+
+  function showPreview(file) {
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    fileNameElem.textContent = file.name;
+    uploadContainer.classList.add('hidden');
+    imagePreview.classList.remove('hidden');
+    outputSection.classList.add('hidden');
+    detectronOutput.src = '';
+    samOutput.src = '';
+  }
+
+  deleteBtn.addEventListener('click', () => {
+    previewImg.src = '';
+    fileNameElem.textContent = '';
+    fileInput.value = '';
+    uploadContainer.classList.remove('hidden');
+    imagePreview.classList.add('hidden');
+    outputSection.classList.add('hidden');
+    detectronOutput.src = '';
+    samOutput.src = '';
+  });
+
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!fileInput.files.length) return;
+
+    spinner.classList.remove('hidden');
+    detectBtn.disabled = true;
+    deleteBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('image', fileInput.files[0]);
+
+    try {
+      const response = await fetch('/detect', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.redirected) {
+        window.location.href = response.url;
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        alert(data.error);
+        spinner.classList.add('hidden');
+        detectBtn.disabled = false;
+        deleteBtn.disabled = false;
+        return;
+      }
+
+      // Show output images
+      detectronOutput.src = data.detection_image + '?t=' + new Date().getTime();
+      samOutput.src = data.segmented_image + '?t=' + new Date().getTime();
+      outputSection.classList.remove('hidden');
+    } catch (err) {
+      alert('Error processing image.');
+    } finally {
+      spinner.classList.add('hidden');
+      detectBtn.disabled = false;
+      deleteBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
